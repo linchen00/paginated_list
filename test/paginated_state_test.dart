@@ -33,12 +33,15 @@ void main() {
   test('首屏刷新与普通刷新使用互斥状态', () {
     final state = PaginatedState<int>();
 
+    expect(state.isRefreshing, isFalse);
     expect(state.firstPageStatus, FirstPageStatus.idle);
     state.startRefresh();
+    expect(state.isRefreshing, isTrue);
     expect(state.firstPageStatus, FirstPageStatus.loading);
     expect(state.refreshStatus, RefreshStatus.idle);
 
     state.refreshFailed();
+    expect(state.isRefreshing, isFalse);
     expect(state.firstPageStatus, FirstPageStatus.error);
     expect(state.refreshStatus, RefreshStatus.idle);
 
@@ -49,9 +52,11 @@ void main() {
     expect(state.refreshStatus, RefreshStatus.idle);
 
     state.startRefresh();
+    expect(state.isRefreshing, isTrue);
     expect(state.firstPageStatus, FirstPageStatus.completed);
     expect(state.refreshStatus, RefreshStatus.refreshing);
     state.refreshFailed();
+    expect(state.isRefreshing, isFalse);
     expect(state.firstPageStatus, FirstPageStatus.completed);
     expect(state.refreshStatus, RefreshStatus.failed);
   });
@@ -66,8 +71,11 @@ void main() {
     state.resetNoData();
     expect(notifications, 0);
 
+    expect(state.isLoading, isFalse);
     state.startLoading();
+    expect(state.isLoading, isTrue);
     state.loadNoData();
+    expect(state.isLoading, isFalse);
     expect(state.loadStatus, LoadStatus.noMore);
     state.resetNoData();
     expect(state.loadStatus, LoadStatus.idle);

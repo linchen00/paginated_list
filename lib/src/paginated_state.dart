@@ -35,13 +35,15 @@ class PaginatedState<T> extends ChangeNotifier {
   FirstPageStatus get firstPageStatus => _firstPageStatus;
 
   /// 首屏请求或普通刷新是否正在进行。
-  @internal
   bool get isRefreshing =>
       _firstPageStatus == FirstPageStatus.loading ||
       _refreshStatus == RefreshStatus.refreshing;
 
   /// 当前加载状态。
   LoadStatus get loadStatus => _loadStatus;
+
+  /// 下一页加载是否正在进行。
+  bool get isLoading => _loadStatus == LoadStatus.loading;
 
   @internal
   LoadStatus get loadStatusBeforeCanLoading => _loadStatusBeforeCanLoading;
