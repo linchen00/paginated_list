@@ -68,6 +68,7 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
   RefreshStatus? _scheduledResultStatus;
   int _refreshResultToken = 0;
   int _programmaticAnimations = 0;
+  bool _isCollapsingRefreshResult = false;
 
   @override
   void initState() {
@@ -103,6 +104,7 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
   void _scheduleRefreshResultIfNeeded() {
     final status = widget.state.refreshStatus;
     if (!status.isResult) {
+      _isCollapsingRefreshResult = false;
       _clearRefreshResultTimer();
       return;
     }
@@ -113,9 +115,38 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
     _refreshResultTimer = Timer(widget.refreshResultDuration, () {
       if (!mounted || token != _refreshResultToken) return;
       if (widget.state.refreshStatus.isResult) {
-        widget.state.refreshToIdle();
+        _startCollapsingRefreshResult(token);
       }
     });
+  }
+
+  void _startCollapsingRefreshResult(int token) {
+    _isCollapsingRefreshResult = true;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || token != _refreshResultToken) return;
+      _finishCollapsingRefreshResultIfAtBoundary();
+    });
+  }
+
+  void _handlePositionChanged() {
+    _finishCollapsingRefreshResultIfAtBoundary();
+  }
+
+  void _finishCollapsingRefreshResultIfAtBoundary() {
+    if (!_isCollapsingRefreshResult) return;
+    final position = _position;
+    if (_headerExtent > 0 &&
+        position != null &&
+        position.hasPixels &&
+        position.pixels < position.minScrollExtent - 0.5) {
+      return;
+    }
+    _isCollapsingRefreshResult = false;
+    _clearRefreshResultTimer();
+    if (widget.state.refreshStatus.isResult) {
+      widget.state.refreshToIdle();
+    }
   }
 
   void _clearRefreshResultTimer() {
@@ -127,6 +158,7 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
   @override
   void invalidateRefreshResult() {
     _refreshResultToken++;
+    _isCollapsingRefreshResult = false;
     _clearRefreshResultTimer();
   }
 
@@ -321,6 +353,7 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
     final headerSliver = PaginatedRefreshSliver(
       occupiesLayout:
           firstPageCompleted &&
+          !_isCollapsingRefreshResult &&
           widget.state.refreshStatus != RefreshStatus.idle &&
           widget.state.refreshStatus != RefreshStatus.canRefresh,
       child: PaginatedIndicatorHost(
@@ -402,13 +435,18 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
     } else {
       _footerExtent = extent;
     }
-    if (position != null) _position = position;
+    if (position != null && !identical(position, _position)) {
+      _position?.removeListener(_handlePositionChanged);
+      _position = position;
+      position.addListener(_handlePositionChanged);
+    }
   }
 
   void _cancelOperations() {
     _refreshRequest.invalidate(detach: true);
     _loadingRequest.invalidate(detach: true);
     invalidateRefreshResult();
+    _position?.removeListener(_handlePositionChanged);
     _position = null;
   }
 

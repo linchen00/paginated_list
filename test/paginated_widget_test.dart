@@ -326,6 +326,47 @@ void main() {
     expect(state.refreshStatus, RefreshStatus.idle);
   });
 
+  testWidgets('completed 在页面回弹到边界后才恢复 idle', (tester) async {
+    final controller = ScrollController();
+    final state = PaginatedState<int>(items: List.generate(30, (i) => i));
+    double? pixelsAtIdle;
+    state.addListener(() {
+      if (state.refreshStatus == RefreshStatus.idle && controller.hasClients) {
+        pixelsAtIdle = controller.position.pixels;
+      }
+    });
+    state.startRefresh();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaginatedList<int>(
+          state: state,
+          refreshResultDuration: const Duration(milliseconds: 100),
+          headerBuilder: (_) => const SizedBox(height: 48),
+          footerBuilder: _emptyFooter,
+          itemsBuilder: (items) => ListView.builder(
+            controller: controller,
+            itemCount: items.length,
+            itemBuilder: (_, index) => Text('${items[index]}'),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    state.refreshCompleted();
+    await tester.pump();
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(state.refreshStatus, RefreshStatus.completed);
+    await tester.pump();
+    expect(state.refreshStatus, RefreshStatus.completed);
+
+    await tester.pumpAndSettle();
+    expect(state.refreshStatus, RefreshStatus.idle);
+    expect(pixelsAtIdle, closeTo(controller.position.minScrollExtent, 0.5));
+    controller.dispose();
+  });
+
   testWidgets('同一 state 不能同时绑定两个列表', (tester) async {
     final state = PaginatedState<int>();
     await tester.pumpWidget(
