@@ -6,9 +6,14 @@ import 'paginated_status.dart';
 /// 保存分页数据及刷新、加载状态的可变状态对象。
 class PaginatedState<T> extends ChangeNotifier {
   PaginatedState({List<T> items = const []})
-    : _items = List<T>.unmodifiable(items);
+    : _items = List<T>.unmodifiable(items),
+      _firstPageStatus = items.isEmpty
+          ? FirstPageStatus.idle
+          : FirstPageStatus.completed;
 
   List<T> _items;
+  FirstPageStatus _firstPageStatus;
+  FirstPageStatus _firstPageStatusBeforeLoading = FirstPageStatus.idle;
   RefreshStatus _refreshStatus = RefreshStatus.idle;
   LoadStatus _loadStatus = LoadStatus.idle;
   LoadStatus _loadStatusBeforeCanLoading = LoadStatus.idle;
@@ -25,6 +30,15 @@ class PaginatedState<T> extends ChangeNotifier {
 
   /// 当前刷新状态。
   RefreshStatus get refreshStatus => _refreshStatus;
+
+  /// 当前首屏状态。
+  FirstPageStatus get firstPageStatus => _firstPageStatus;
+
+  /// 首屏请求或普通刷新是否正在进行。
+  @internal
+  bool get isRefreshing =>
+      _firstPageStatus == FirstPageStatus.loading ||
+      _refreshStatus == RefreshStatus.refreshing;
 
   /// 当前加载状态。
   LoadStatus get loadStatus => _loadStatus;
@@ -56,9 +70,15 @@ class PaginatedState<T> extends ChangeNotifier {
 
   /// 将刷新状态切换为进行中；不会触发 UI 回调。
   void startRefresh() {
-    if (_refreshStatus == RefreshStatus.refreshing) return;
+    if (isRefreshing) return;
     _binding?.invalidateRefreshResult();
-    _setRefresh(RefreshStatus.refreshing);
+    if (_firstPageStatus != FirstPageStatus.completed) {
+      _firstPageStatusBeforeLoading = _firstPageStatus;
+      _firstPageStatus = FirstPageStatus.loading;
+    } else {
+      _refreshStatus = RefreshStatus.refreshing;
+    }
+    notifyListeners();
   }
 
   /// 将加载状态切换为进行中；不会触发 UI 回调。
@@ -69,23 +89,43 @@ class PaginatedState<T> extends ChangeNotifier {
 
   /// 结束刷新并进入成功结果状态。
   void refreshCompleted({bool resetLoadStatus = true}) {
-    if (_refreshStatus != RefreshStatus.refreshing) return;
-    _refreshStatus = RefreshStatus.completed;
+    if (_firstPageStatus == FirstPageStatus.loading) {
+      _firstPageStatus = _items.isEmpty
+          ? FirstPageStatus.empty
+          : FirstPageStatus.completed;
+    } else if (_refreshStatus == RefreshStatus.refreshing) {
+      _refreshStatus = RefreshStatus.completed;
+      if (_items.isEmpty) _firstPageStatus = FirstPageStatus.empty;
+    } else {
+      return;
+    }
     if (resetLoadStatus) _loadStatus = LoadStatus.idle;
     notifyListeners();
   }
 
   /// 结束刷新并进入失败结果状态。
   void refreshFailed() {
-    if (_refreshStatus != RefreshStatus.refreshing) return;
-    _setRefresh(RefreshStatus.failed);
+    if (_firstPageStatus == FirstPageStatus.loading) {
+      _firstPageStatus = FirstPageStatus.error;
+    } else if (_refreshStatus == RefreshStatus.refreshing) {
+      _refreshStatus = RefreshStatus.failed;
+    } else {
+      return;
+    }
+    notifyListeners();
   }
 
   /// 立即结束当前刷新状态并收起 Header。
   void refreshToIdle() {
-    if (_refreshStatus == RefreshStatus.idle) return;
+    if (_firstPageStatus == FirstPageStatus.loading) {
+      _firstPageStatus = _firstPageStatusBeforeLoading;
+    } else if (_refreshStatus != RefreshStatus.idle) {
+      _refreshStatus = RefreshStatus.idle;
+    } else {
+      return;
+    }
     _binding?.invalidateRefreshResult();
-    _setRefresh(RefreshStatus.idle);
+    notifyListeners();
   }
 
   /// 完成加载并恢复空闲状态。
@@ -159,7 +199,8 @@ class PaginatedState<T> extends ChangeNotifier {
 
   @internal
   void markCanRefresh() {
-    if (_refreshStatus == RefreshStatus.idle) {
+    if (_firstPageStatus == FirstPageStatus.completed &&
+        _refreshStatus == RefreshStatus.idle) {
       _setRefresh(RefreshStatus.canRefresh);
     }
   }
@@ -192,7 +233,10 @@ class PaginatedState<T> extends ChangeNotifier {
 
   @internal
   void restoreRefreshAfterInterruptedRequest() {
-    if (_refreshStatus == RefreshStatus.refreshing) {
+    if (_firstPageStatus == FirstPageStatus.loading) {
+      _firstPageStatus = _firstPageStatusBeforeLoading;
+      notifyListeners();
+    } else if (_refreshStatus == RefreshStatus.refreshing) {
       _setRefresh(RefreshStatus.idle);
     }
   }

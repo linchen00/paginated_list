@@ -21,6 +21,9 @@ class PaginatedList<T> extends StatefulWidget {
     required this.itemsBuilder,
     required this.headerBuilder,
     required this.footerBuilder,
+    this.firstPageEmptyIndicatorBuilder,
+    this.firstPageErrorIndicatorBuilder,
+    this.firstPageProgressIndicatorBuilder,
     this.onRefresh,
     this.onLoading,
     this.refreshTriggerDistance = 60,
@@ -36,6 +39,9 @@ class PaginatedList<T> extends StatefulWidget {
   final PaginatedItemsBuilder<T> itemsBuilder;
   final PaginatedHeaderBuilder headerBuilder;
   final PaginatedFooterBuilder footerBuilder;
+  final FirstPageIndicatorBuilder? firstPageEmptyIndicatorBuilder;
+  final FirstPageErrorIndicatorBuilder? firstPageErrorIndicatorBuilder;
+  final FirstPageIndicatorBuilder? firstPageProgressIndicatorBuilder;
   final AsyncCallback? onRefresh;
   final AsyncCallback? onLoading;
   final double refreshTriggerDistance;
@@ -55,8 +61,6 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
       PaginatedRequestCoordinator();
   final PaginatedRequestSlot _refreshRequest = PaginatedRequestSlot();
   final PaginatedRequestSlot _loadingRequest = PaginatedRequestSlot();
-  final _BuildCache<ScrollView> _itemsCache = _BuildCache<ScrollView>();
-
   ScrollPosition? _position;
   double _headerExtent = 0;
   double _footerExtent = 0;
@@ -133,7 +137,7 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
       operation: 'requestRefresh()',
       callbackName: 'onRefresh',
       slot: _refreshRequest,
-      isRunning: requestState.refreshStatus == RefreshStatus.refreshing,
+      isRunning: requestState.isRefreshing,
       callback: widget.onRefresh,
       animate: animate,
       leading: true,
@@ -154,7 +158,9 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
       callbackName: 'onLoading',
       slot: _loadingRequest,
       isRunning: requestState.loadStatus == LoadStatus.loading,
-      callback: widget.onLoading,
+      callback: requestState.firstPageStatus == FirstPageStatus.completed
+          ? widget.onLoading
+          : null,
       animate: animate,
       leading: false,
       duration: widget.requestLoadingDuration,
@@ -303,14 +309,18 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
 
   @override
   Widget build(BuildContext context) {
-    final view = _itemsCache.resolve((
-      widget.state.items,
-      widget.itemsBuilder,
-    ), () => widget.itemsBuilder(widget.state.items));
-    final header = widget.headerBuilder(widget.state.refreshStatus);
-    final footer = widget.footerBuilder(widget.state.loadStatus);
+    final view = _buildItemsView();
+    final firstPageCompleted =
+        widget.state.firstPageStatus == FirstPageStatus.completed;
+    final header = firstPageCompleted
+        ? widget.headerBuilder(widget.state.refreshStatus)
+        : const SizedBox.shrink();
+    final footer = firstPageCompleted
+        ? widget.footerBuilder(widget.state.loadStatus)
+        : const SizedBox.shrink();
     final headerSliver = PaginatedRefreshSliver(
       occupiesLayout:
+          firstPageCompleted &&
           widget.state.refreshStatus != RefreshStatus.idle &&
           widget.state.refreshStatus != RefreshStatus.canRefresh,
       child: PaginatedIndicatorHost(
@@ -322,7 +332,9 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
       ),
     );
     final footerSliver = PaginatedLoadSliver(
-      occupiesLayout: widget.state.loadStatus != LoadStatus.canLoading,
+      occupiesLayout:
+          firstPageCompleted &&
+          widget.state.loadStatus != LoadStatus.canLoading,
       child: PaginatedIndicatorHost(
         key: ValueKey<(PaginatedState<T>, bool)>((widget.state, false)),
         axis: view.scrollDirection,
@@ -338,8 +350,12 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
         state: widget.state,
         refreshTriggerDistance: widget.refreshTriggerDistance,
         loadingTriggerDistance: widget.loadingTriggerDistance,
-        onRefresh: widget.onRefresh == null ? null : _triggerGestureRefresh,
-        onLoading: widget.onLoading == null ? null : _triggerGestureLoading,
+        onRefresh: widget.onRefresh == null || !firstPageCompleted
+            ? null
+            : _triggerGestureRefresh,
+        onLoading: widget.onLoading == null || !firstPageCompleted
+            ? null
+            : _triggerGestureLoading,
         child: composeScrollView(
           context: context,
           source: view,
@@ -347,6 +363,32 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
           footerSliver: footerSliver,
         ),
       ),
+    );
+  }
+
+  ScrollView _buildItemsView() {
+    return switch (widget.state.firstPageStatus) {
+      FirstPageStatus.idle || FirstPageStatus.empty => _buildFirstPageView(
+        widget.firstPageEmptyIndicatorBuilder?.call(),
+      ),
+      FirstPageStatus.loading => _buildFirstPageView(
+        widget.firstPageProgressIndicatorBuilder?.call(),
+      ),
+      FirstPageStatus.error => _buildFirstPageView(
+        widget.firstPageErrorIndicatorBuilder?.call(
+          widget.onRefresh == null ? null : widget.state.requestRefresh,
+        ),
+      ),
+      FirstPageStatus.completed => widget.itemsBuilder(widget.state.items),
+    };
+  }
+
+  ScrollView _buildFirstPageView(Widget? indicator) {
+    if (indicator == null) {
+      return widget.itemsBuilder(widget.state.items);
+    }
+    return CustomScrollView(
+      slivers: [SliverFillRemaining(hasScrollBody: false, child: indicator)],
     );
   }
 
@@ -382,17 +424,4 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
 extension on RefreshStatus {
   bool get isResult =>
       this == RefreshStatus.completed || this == RefreshStatus.failed;
-}
-
-class _BuildCache<T extends Object> {
-  Object? _key;
-  T? _value;
-
-  T resolve(Object key, T Function() build) {
-    if (_value == null || _key != key) {
-      _key = key;
-      _value = build();
-    }
-    return _value!;
-  }
 }

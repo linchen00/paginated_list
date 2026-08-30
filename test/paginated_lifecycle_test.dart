@@ -27,8 +27,8 @@ Widget _buildHost({
 
 void main() {
   testWidgets('替换 state 后刷新请求与旧 Future 隔离', (tester) async {
-    final oldState = PaginatedState<int>();
-    final newState = PaginatedState<int>();
+    final oldState = PaginatedState<int>(items: [1]);
+    final newState = PaginatedState<int>(items: [1]);
     final oldCompleter = Completer<void>();
     final newCompleter = Completer<void>();
     var newCalls = 0;
@@ -67,8 +67,8 @@ void main() {
   });
 
   testWidgets('替换 state 后加载请求与旧 Future 隔离', (tester) async {
-    final oldState = PaginatedState<int>();
-    final newState = PaginatedState<int>();
+    final oldState = PaginatedState<int>(items: [1]);
+    final newState = PaginatedState<int>(items: [1]);
     final oldCompleter = Completer<void>();
     final newCompleter = Completer<void>();
     var newCalls = 0;
@@ -106,7 +106,7 @@ void main() {
   });
 
   testWidgets('结果展示期间修改时长会重新计时', (tester) async {
-    final state = PaginatedState<int>();
+    final state = PaginatedState<int>(items: [1]);
     state.startRefresh();
     await tester.pumpWidget(_buildHost(state: state, onRefresh: () async {}));
     await tester.pump();

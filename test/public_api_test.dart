@@ -8,14 +8,21 @@ void main() {
     ScrollView list(List<int> _) => ListView();
     ScrollView grid(List<int> _) => GridView.count(crossAxisCount: 1);
     ScrollView custom(List<int> _) => const CustomScrollView();
+    Widget indicator() => const SizedBox();
+    Widget error(VoidCallback? _) => const SizedBox();
 
     final PaginatedItemsBuilder<int> listBuilder = list;
     final PaginatedItemsBuilder<int> gridBuilder = grid;
     final PaginatedItemsBuilder<int> customBuilder = custom;
+    final FirstPageIndicatorBuilder indicatorBuilder = indicator;
+    final FirstPageErrorIndicatorBuilder errorBuilder = error;
 
     expect(state.items, [1]);
     expect(listBuilder([]), isA<ListView>());
     expect(gridBuilder([]), isA<GridView>());
     expect(customBuilder([]), isA<CustomScrollView>());
+    expect(indicatorBuilder(), isA<SizedBox>());
+    expect(errorBuilder(null), isA<SizedBox>());
+    expect(FirstPageStatus.values, contains(FirstPageStatus.completed));
   });
 }

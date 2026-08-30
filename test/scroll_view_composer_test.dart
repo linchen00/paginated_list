@@ -55,7 +55,7 @@ void main() {
     );
     expect(tester.takeException(), isNull);
 
-    final customState = PaginatedState<int>();
+    final customState = PaginatedState<int>(items: [1]);
     await tester.pumpWidget(
       MaterialApp(
         home: PaginatedList<int>(

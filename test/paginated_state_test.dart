@@ -16,7 +16,7 @@ void main() {
   });
 
   test('刷新合法状态转移并原子重置加载状态', () {
-    final state = PaginatedState<int>();
+    final state = PaginatedState<int>(items: [1]);
     var notifications = 0;
     state.addListener(() => notifications++);
     state.startLoading();
@@ -28,6 +28,32 @@ void main() {
     expect(notifications, 1);
     state.refreshCompleted();
     expect(notifications, 1);
+  });
+
+  test('首屏刷新与普通刷新使用互斥状态', () {
+    final state = PaginatedState<int>();
+
+    expect(state.firstPageStatus, FirstPageStatus.idle);
+    state.startRefresh();
+    expect(state.firstPageStatus, FirstPageStatus.loading);
+    expect(state.refreshStatus, RefreshStatus.idle);
+
+    state.refreshFailed();
+    expect(state.firstPageStatus, FirstPageStatus.error);
+    expect(state.refreshStatus, RefreshStatus.idle);
+
+    state.startRefresh();
+    state.items = [1];
+    state.refreshCompleted();
+    expect(state.firstPageStatus, FirstPageStatus.completed);
+    expect(state.refreshStatus, RefreshStatus.idle);
+
+    state.startRefresh();
+    expect(state.firstPageStatus, FirstPageStatus.completed);
+    expect(state.refreshStatus, RefreshStatus.refreshing);
+    state.refreshFailed();
+    expect(state.firstPageStatus, FirstPageStatus.completed);
+    expect(state.refreshStatus, RefreshStatus.failed);
   });
 
   test('加载状态机拒绝非法调用', () {

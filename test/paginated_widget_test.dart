@@ -106,7 +106,166 @@ void main() {
     await first;
   });
 
-  testWidgets('状态变化只缓存 itemsBuilder', (tester) async {
+  testWidgets('首屏状态保留 PaginatedList 绑定并在完成后进入分页模式', (tester) async {
+    final state = PaginatedState<int>();
+    final refreshCallback = Completer<void>();
+    var loadingCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaginatedList<int>(
+          state: state,
+          headerBuilder: _emptyHeader,
+          footerBuilder: _emptyFooter,
+          firstPageEmptyIndicatorBuilder: () => const Text('first-empty'),
+          firstPageProgressIndicatorBuilder: () => const Text('first-loading'),
+          firstPageErrorIndicatorBuilder: (_) => const Text('first-error'),
+          onRefresh: () => refreshCallback.future,
+          onLoading: () async {
+            loadingCalls++;
+            state.loadComplete();
+          },
+          itemsBuilder: (items) => ListView(
+            children: items.map((item) => Text('item$item')).toList(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('first-empty'), findsOneWidget);
+    final refresh = state.requestRefresh();
+    await tester.pumpAndSettle();
+    expect(state.firstPageStatus, FirstPageStatus.loading);
+    expect(state.refreshStatus, RefreshStatus.idle);
+    expect(find.text('first-loading'), findsOneWidget);
+
+    state.items = [1];
+    state.refreshCompleted();
+    refreshCallback.complete();
+    await refresh;
+    await tester.pump();
+
+    expect(state.firstPageStatus, FirstPageStatus.completed);
+    expect(find.text('item1'), findsOneWidget);
+
+    final loading = state.requestLoading();
+    await tester.pumpAndSettle();
+    await loading;
+    expect(loadingCalls, 1);
+  });
+
+  testWidgets('首屏失败状态通过同一个 requestRefresh 重试', (tester) async {
+    final state = PaginatedState<int>();
+    VoidCallback? retry;
+    var refreshCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaginatedList<int>(
+          state: state,
+          headerBuilder: _emptyHeader,
+          footerBuilder: _emptyFooter,
+          firstPageErrorIndicatorBuilder: (onTryAgain) {
+            retry = onTryAgain;
+            return const Text('first-error');
+          },
+          onRefresh: () async {
+            refreshCalls++;
+            state.refreshFailed();
+          },
+          itemsBuilder: (_) => ListView(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final firstRefresh = state.requestRefresh();
+    await tester.pumpAndSettle();
+    await firstRefresh;
+    await tester.pump();
+    expect(state.firstPageStatus, FirstPageStatus.error);
+    expect(find.text('first-error'), findsOneWidget);
+    expect(retry, isNotNull);
+
+    retry!();
+    await tester.pumpAndSettle();
+    expect(refreshCalls, 2);
+    expect(state.firstPageStatus, FirstPageStatus.error);
+  });
+
+  testWidgets('首屏 Indicator 未配置时回退到 itemsBuilder', (tester) async {
+    final state = PaginatedState<int>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaginatedList<int>(
+          state: state,
+          headerBuilder: _emptyHeader,
+          footerBuilder: _emptyFooter,
+          itemsBuilder: (_) =>
+              ListView(children: const [Text('items-builder-empty')]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(state.firstPageStatus, FirstPageStatus.idle);
+    expect(find.text('items-builder-empty'), findsOneWidget);
+
+    state.startRefresh();
+    await tester.pump();
+    expect(state.firstPageStatus, FirstPageStatus.loading);
+    expect(find.text('items-builder-empty'), findsOneWidget);
+
+    state.refreshFailed();
+    await tester.pump();
+    expect(state.firstPageStatus, FirstPageStatus.error);
+    expect(find.text('items-builder-empty'), findsOneWidget);
+  });
+
+  testWidgets('首屏未完成时不构建或布局 Header 和 Footer', (tester) async {
+    final state = PaginatedState<int>();
+    var headerBuilds = 0;
+    var footerBuilds = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaginatedList<int>(
+          state: state,
+          headerBuilder: (_) {
+            headerBuilds++;
+            return const SizedBox(height: 48, child: Text('page-header'));
+          },
+          firstPageEmptyIndicatorBuilder: () => const Text('first-page'),
+          footerBuilder: (_) {
+            footerBuilds++;
+            return const SizedBox(height: 48, child: Text('page-footer'));
+          },
+          itemsBuilder: (items) =>
+              ListView(children: items.map((item) => Text('$item')).toList()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(headerBuilds, 0);
+    expect(footerBuilds, 0);
+    expect(find.text('page-header'), findsNothing);
+    expect(find.text('page-footer'), findsNothing);
+
+    state.startRefresh();
+    state.items = [1];
+    state.refreshCompleted();
+    await tester.pump();
+
+    expect(state.firstPageStatus, FirstPageStatus.completed);
+    expect(headerBuilds, 1);
+    expect(footerBuilds, 1);
+    expect(find.text('page-footer'), findsOneWidget);
+  });
+
+  testWidgets('状态变化按正常重建语义调用 itemsBuilder', (tester) async {
     final state = PaginatedState<int>(items: [1]);
     var itemBuilds = 0;
     var headerBuilds = 0;
@@ -135,19 +294,19 @@ void main() {
     state.startRefresh();
     await tester.pump();
 
-    expect(itemBuilds, 1);
+    expect(itemBuilds, 2);
     expect(headerBuilds, 2);
     expect(footerBuilds, 2);
 
     state.items = [2];
     await tester.pump();
-    expect(itemBuilds, 2);
+    expect(itemBuilds, 3);
     expect(headerBuilds, 3);
     expect(footerBuilds, 3);
   });
 
   testWidgets('刷新结果按配置时长恢复 idle', (tester) async {
-    final state = PaginatedState<int>();
+    final state = PaginatedState<int>(items: [1]);
     state.startRefresh();
     await tester.pumpWidget(
       MaterialApp(
