@@ -33,7 +33,7 @@ void main() {
     expect(composed.controller, same(controller));
     expect(composed.reverse, isTrue);
     expect(controller.positions, hasLength(1));
-    expect(find.text('header'), findsOneWidget);
+    expect(find.text('header'), findsNothing);
     expect(find.text('item1'), findsOneWidget);
     expect(find.text('footer'), findsOneWidget);
   });

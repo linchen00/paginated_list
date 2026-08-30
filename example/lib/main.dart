@@ -6,7 +6,10 @@ import 'pre_bound_refresh_example.dart';
 void main() => runApp(const ExampleApp());
 
 Widget _buildHeader(RefreshStatus status) => switch (status) {
-  RefreshStatus.idle => const SizedBox.shrink(),
+  RefreshStatus.idle => SizedBox(
+    height: 48,
+    child: Center(child: Text('下拉刷新')),
+  ),
   RefreshStatus.canRefresh => const SizedBox(
     height: 48,
     child: Center(child: Text('松开刷新')),

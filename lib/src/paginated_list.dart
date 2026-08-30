@@ -310,7 +310,9 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
     final header = widget.headerBuilder(widget.state.refreshStatus);
     final footer = widget.footerBuilder(widget.state.loadStatus);
     final headerSliver = PaginatedRefreshSliver(
-      occupiesLayout: widget.state.refreshStatus != RefreshStatus.canRefresh,
+      occupiesLayout:
+          widget.state.refreshStatus != RefreshStatus.idle &&
+          widget.state.refreshStatus != RefreshStatus.canRefresh,
       child: PaginatedIndicatorHost(
         key: ValueKey<(PaginatedState<T>, bool)>((widget.state, true)),
         axis: view.scrollDirection,

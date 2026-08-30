@@ -342,6 +342,59 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('idle Header 初始隐藏且仅在下拉时露出', (tester) async {
+    const idleHeaderKey = ValueKey<String>('idle-header');
+    const firstItemKey = ValueKey<String>('idle-first-item');
+    final state = PaginatedState<int>(items: List.generate(30, (i) => i));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaginatedList<int>(
+          state: state,
+          headerBuilder: (status) => status == RefreshStatus.idle
+              ? const SizedBox(
+                  key: idleHeaderKey,
+                  height: 48,
+                  child: Text('pull to refresh'),
+                )
+              : const SizedBox.shrink(),
+          footerBuilder: _emptyFooter,
+          itemsBuilder: (items) => ListView.builder(
+            itemExtent: 40,
+            itemCount: items.length,
+            itemBuilder: (_, index) => SizedBox(
+              key: index == 0 ? firstItemKey : null,
+              child: Text('${items[index]}'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(state.refreshStatus, RefreshStatus.idle);
+    expect(find.byKey(idleHeaderKey), findsNothing);
+
+    final initialItemTop = tester.getTopLeft(find.byKey(firstItemKey)).dy;
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(CustomScrollView)),
+    );
+    await gesture.moveBy(const Offset(0, 30));
+    await tester.pump();
+
+    expect(state.refreshStatus, RefreshStatus.idle);
+    expect(
+      tester.getTopLeft(find.byKey(firstItemKey)).dy,
+      greaterThan(initialItemTop),
+    );
+    expect(
+      tester.getBottomLeft(find.byKey(idleHeaderKey)).dy,
+      closeTo(tester.getTopLeft(find.byKey(firstItemKey)).dy, 0.1),
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('回弹刷新时 Header 占位且不覆盖列表内容', (tester) async {
     const firstItemKey = ValueKey<String>('refreshing-first-item');
     const refreshingHeaderKey = ValueKey<String>('refreshing-header');
