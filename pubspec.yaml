@@ -1,11 +1,10 @@
 name: paginated_list
-description: "A new Flutter package project."
+description: A compact Flutter list with pull-to-refresh and load-more state control.
 version: 0.0.1
-homepage:
 
 environment:
   sdk: ^3.12.1
-  flutter: ">=1.17.0"
+  flutter: ">=3.44.0"
 
 dependencies:
   flutter:
