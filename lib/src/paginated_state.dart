@@ -1,268 +1,128 @@
 import 'package:flutter/foundation.dart';
 
-import 'internal/paginated_binding.dart';
 import 'paginated_status.dart';
 
-/// 保存分页数据及刷新、加载状态的可变状态对象。
-class PaginatedState<T> extends ChangeNotifier {
+/// 不可变分页快照。转换方法返回新值，调用方负责发布新状态。
+///
+/// 列表会复制为不可修改快照；元素本身不会深拷贝。
+@immutable
+class PaginatedState<T> {
   PaginatedState({List<T> items = const []})
-    : _items = List<T>.unmodifiable(items),
-      _firstPageStatus = items.isEmpty
-          ? FirstPageStatus.idle
-          : FirstPageStatus.completed;
+    : this._(
+        items: List<T>.unmodifiable(items),
+        firstPageStatus: items.isEmpty
+            ? FirstPageStatus.idle
+            : FirstPageStatus.completed,
+      );
 
-  List<T> _items;
-  FirstPageStatus _firstPageStatus;
-  FirstPageStatus _firstPageStatusBeforeLoading = FirstPageStatus.idle;
-  RefreshStatus _refreshStatus = RefreshStatus.idle;
-  LoadStatus _loadStatus = LoadStatus.idle;
-  LoadStatus _loadStatusBeforeCanLoading = LoadStatus.idle;
-  PaginatedBinding? _binding;
-  bool _disposed = false;
+  const PaginatedState._({
+    required this.items,
+    required this.firstPageStatus,
+    this.refreshStatus = RefreshStatus.idle,
+    this.loadStatus = LoadStatus.idle,
+    this._firstPageBeforeLoading = FirstPageStatus.idle,
+    this.refreshRevision = 0,
+  });
 
-  /// 当前数据的不可修改快照。
-  List<T> get items => _items;
+  final List<T> items;
+  final FirstPageStatus firstPageStatus;
+  final RefreshStatus refreshStatus;
+  final LoadStatus loadStatus;
+  final FirstPageStatus _firstPageBeforeLoading;
 
-  set items(List<T> value) {
-    _items = List<T>.unmodifiable(value);
-    notifyListeners();
-  }
+  /// 仅用于视图区分连续刷新提示，不代表网络请求令牌。
+  @internal
+  final int refreshRevision;
 
-  /// 当前刷新状态。
-  RefreshStatus get refreshStatus => _refreshStatus;
-
-  /// 当前首屏状态。
-  FirstPageStatus get firstPageStatus => _firstPageStatus;
-
-  /// 首屏请求或普通刷新是否正在进行。
   bool get isRefreshing =>
-      _firstPageStatus == FirstPageStatus.loading ||
-      _refreshStatus == RefreshStatus.refreshing;
+      firstPageStatus == FirstPageStatus.loading ||
+      refreshStatus == RefreshStatus.refreshing;
+  bool get isLoading => loadStatus == LoadStatus.loading;
+  bool get isNoMore => loadStatus == LoadStatus.noMore;
 
-  /// 当前加载状态。
-  LoadStatus get loadStatus => _loadStatus;
+  /// 替换完整数据；不改变请求状态，也不自动合并数据。
+  PaginatedState<T> copyWith({List<T>? items}) =>
+      items == null ? this : _next(items: items);
 
-  /// 下一页加载是否正在进行。
-  bool get isLoading => _loadStatus == LoadStatus.loading;
-
-  @internal
-  LoadStatus get loadStatusBeforeCanLoading => _loadStatusBeforeCanLoading;
-
-  /// 通过已绑定的视图展示 Header，然后执行刷新回调。
-  Future<void> requestRefresh() {
-    final binding = _binding;
-    if (binding == null) {
-      return Future<void>.error(
-        PaginatedBindingErrors.notBound('requestRefresh()'),
-      );
-    }
-    return binding.requestRefresh();
+  PaginatedState<T> startRefresh() {
+    if (isRefreshing) return this;
+    return _next(
+      firstPageStatus: firstPageStatus == FirstPageStatus.completed
+          ? firstPageStatus
+          : FirstPageStatus.loading,
+      refreshStatus: firstPageStatus == FirstPageStatus.completed
+          ? RefreshStatus.refreshing
+          : RefreshStatus.idle,
+      firstPageBeforeLoading: firstPageStatus,
+      refreshRevision: refreshRevision + 1,
+    );
   }
 
-  /// 通过已绑定的视图展示 Footer，然后执行加载回调。
-  Future<void> requestLoading() {
-    final binding = _binding;
-    if (binding == null) {
-      return Future<void>.error(
-        PaginatedBindingErrors.notBound('requestLoading()'),
-      );
-    }
-    return binding.requestLoading();
-  }
-
-  /// 将刷新状态切换为进行中；不会触发 UI 回调。
-  void startRefresh() {
-    if (isRefreshing) return;
-    _binding?.invalidateRefreshResult();
-    if (_firstPageStatus != FirstPageStatus.completed) {
-      _firstPageStatusBeforeLoading = _firstPageStatus;
-      _firstPageStatus = FirstPageStatus.loading;
-    } else {
-      _refreshStatus = RefreshStatus.refreshing;
-    }
-    notifyListeners();
-  }
-
-  /// 将加载状态切换为进行中；不会触发 UI 回调。
-  void startLoading() {
-    if (_loadStatus == LoadStatus.loading) return;
-    _setLoad(LoadStatus.loading);
-  }
-
-  /// 结束刷新并进入成功结果状态。
-  void refreshCompleted({bool resetLoadStatus = true}) {
-    if (_firstPageStatus == FirstPageStatus.loading) {
-      _firstPageStatus = _items.isEmpty
+  /// 原子提交完整数据和刷新结果，始终重置加载状态。
+  ///
+  /// 不取消尚未完成的加载请求；业务需自行忽略过期响应。
+  PaginatedState<T> refreshCompleted({List<T>? items}) {
+    if (!isRefreshing) return this;
+    final empty = (items ?? this.items).isEmpty;
+    return _next(
+      items: items,
+      firstPageStatus: empty
           ? FirstPageStatus.empty
-          : FirstPageStatus.completed;
-    } else if (_refreshStatus == RefreshStatus.refreshing) {
-      _refreshStatus = RefreshStatus.completed;
-      if (_items.isEmpty) _firstPageStatus = FirstPageStatus.empty;
-    } else {
-      return;
+          : FirstPageStatus.completed,
+      refreshStatus: firstPageStatus == FirstPageStatus.loading
+          ? RefreshStatus.idle
+          : RefreshStatus.completed,
+      loadStatus: LoadStatus.idle,
+    );
+  }
+
+  PaginatedState<T> refreshFailed() {
+    if (!isRefreshing) return this;
+    return firstPageStatus == FirstPageStatus.loading
+        ? _next(firstPageStatus: FirstPageStatus.error)
+        : _next(refreshStatus: RefreshStatus.failed);
+  }
+
+  /// 业务主动结束刷新或清除结果；视图收起提示不会调用本方法。
+  PaginatedState<T> refreshToIdle() {
+    if (firstPageStatus == FirstPageStatus.loading) {
+      return _next(firstPageStatus: _firstPageBeforeLoading);
     }
-    if (resetLoadStatus) _loadStatus = LoadStatus.idle;
-    notifyListeners();
+    if (refreshStatus == RefreshStatus.idle) return this;
+    return _next(refreshStatus: RefreshStatus.idle);
   }
 
-  /// 结束刷新并进入失败结果状态。
-  void refreshFailed() {
-    if (_firstPageStatus == FirstPageStatus.loading) {
-      _firstPageStatus = FirstPageStatus.error;
-    } else if (_refreshStatus == RefreshStatus.refreshing) {
-      _refreshStatus = RefreshStatus.failed;
-    } else {
-      return;
-    }
-    notifyListeners();
-  }
+  PaginatedState<T> startLoading() =>
+      isLoading ? this : _next(loadStatus: LoadStatus.loading);
 
-  /// 立即结束当前刷新状态并收起 Header。
-  void refreshToIdle() {
-    if (_firstPageStatus == FirstPageStatus.loading) {
-      _firstPageStatus = _firstPageStatusBeforeLoading;
-    } else if (_refreshStatus != RefreshStatus.idle) {
-      _refreshStatus = RefreshStatus.idle;
-    } else {
-      return;
-    }
-    _binding?.invalidateRefreshResult();
-    notifyListeners();
-  }
+  /// [items] 为业务合并后的完整列表，不是待追加的一页。
+  PaginatedState<T> loadCompleted({List<T>? items}) =>
+      isLoading ? _next(items: items, loadStatus: LoadStatus.idle) : this;
 
-  /// 完成加载并恢复空闲状态。
-  void loadCompleted() {
-    if (_loadStatus != LoadStatus.loading) return;
-    _setLoad(LoadStatus.idle);
-  }
+  PaginatedState<T> loadFailed() =>
+      isLoading ? _next(loadStatus: LoadStatus.failed) : this;
 
-  /// 结束加载并进入失败状态。
-  void loadFailed() {
-    if (_loadStatus != LoadStatus.loading) return;
-    _setLoad(LoadStatus.failed);
-  }
+  /// 可直接标记没有更多；允许同时提交最后一页合并后的完整列表。
+  PaginatedState<T> loadNoData({List<T>? items}) => isNoMore && items == null
+      ? this
+      : _next(items: items, loadStatus: LoadStatus.noMore);
 
-  /// 标记没有更多数据，不限制当前加载状态。
-  void loadNoData() {
-    _setLoad(LoadStatus.noMore);
-  }
+  PaginatedState<T> resetNoData() =>
+      isNoMore ? _next(loadStatus: LoadStatus.idle) : this;
 
-  /// 清除没有更多数据状态。
-  void resetNoData() {
-    if (_loadStatus != LoadStatus.noMore) return;
-    _setLoad(LoadStatus.idle);
-  }
-
-  @internal
-  void bind(PaginatedBinding binding) {
-    if (_disposed) {
-      throw StateError('已 dispose 的 PaginatedState 不能绑定 PaginatedList。');
-    }
-    if (_binding != null && !identical(_binding, binding)) {
-      throw FlutterError(
-        '一个 PaginatedState 同一时刻只能绑定一个 PaginatedList。\n'
-        '请为第二个列表创建独立的 PaginatedState，或先卸载原列表。',
-      );
-    }
-    _binding = binding;
-  }
-
-  @internal
-  void unbind(PaginatedBinding binding, {LoadStatus? previousLoadStatus}) {
-    if (!identical(_binding, binding)) return;
-    _binding = null;
-    var changed = false;
-    if (_refreshStatus == RefreshStatus.canRefresh) {
-      _refreshStatus = RefreshStatus.idle;
-      changed = true;
-    }
-    if (_loadStatus == LoadStatus.canLoading) {
-      _loadStatus = previousLoadStatus ?? _loadStatusBeforeCanLoading;
-      changed = true;
-    }
-    if (changed) notifyListeners();
-  }
-
-  @internal
-  void normalizeForMount() {
-    var changed = false;
-    if (_refreshStatus != RefreshStatus.idle &&
-        _refreshStatus != RefreshStatus.refreshing) {
-      _refreshStatus = RefreshStatus.idle;
-      changed = true;
-    }
-    if (_loadStatus == LoadStatus.canLoading) {
-      _loadStatus = LoadStatus.idle;
-      changed = true;
-    }
-    if (changed) notifyListeners();
-  }
-
-  @internal
-  void markCanRefresh() {
-    if (_firstPageStatus == FirstPageStatus.completed &&
-        _refreshStatus == RefreshStatus.idle) {
-      _setRefresh(RefreshStatus.canRefresh);
-    }
-  }
-
-  @internal
-  void cancelCanRefresh() {
-    if (_refreshStatus == RefreshStatus.canRefresh) {
-      _setRefresh(RefreshStatus.idle);
-    }
-  }
-
-  @internal
-  bool markCanLoading() {
-    if (_loadStatus == LoadStatus.noMore ||
-        _loadStatus == LoadStatus.loading ||
-        _loadStatus == LoadStatus.canLoading) {
-      return false;
-    }
-    _loadStatusBeforeCanLoading = _loadStatus;
-    _setLoad(LoadStatus.canLoading);
-    return true;
-  }
-
-  @internal
-  void cancelCanLoading([LoadStatus? previous]) {
-    if (_loadStatus == LoadStatus.canLoading) {
-      _setLoad(previous ?? _loadStatusBeforeCanLoading);
-    }
-  }
-
-  @internal
-  void restoreRefreshAfterInterruptedRequest() {
-    if (_firstPageStatus == FirstPageStatus.loading) {
-      _firstPageStatus = _firstPageStatusBeforeLoading;
-      notifyListeners();
-    } else if (_refreshStatus == RefreshStatus.refreshing) {
-      _setRefresh(RefreshStatus.idle);
-    }
-  }
-
-  @internal
-  void restoreLoadAfterInterruptedRequest(LoadStatus previous) {
-    if (_loadStatus == LoadStatus.loading) _setLoad(previous);
-  }
-
-  void _setRefresh(RefreshStatus value) {
-    if (_refreshStatus == value) return;
-    _refreshStatus = value;
-    notifyListeners();
-  }
-
-  void _setLoad(LoadStatus value) {
-    if (_loadStatus == value) return;
-    _loadStatus = value;
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    _binding = null;
-    super.dispose();
-  }
+  PaginatedState<T> _next({
+    List<T>? items,
+    FirstPageStatus? firstPageStatus,
+    RefreshStatus? refreshStatus,
+    LoadStatus? loadStatus,
+    FirstPageStatus? firstPageBeforeLoading,
+    int? refreshRevision,
+  }) => PaginatedState._(
+    items: items == null ? this.items : List<T>.unmodifiable(items),
+    firstPageStatus: firstPageStatus ?? this.firstPageStatus,
+    refreshStatus: refreshStatus ?? this.refreshStatus,
+    loadStatus: loadStatus ?? this.loadStatus,
+    firstPageBeforeLoading: firstPageBeforeLoading ?? _firstPageBeforeLoading,
+    refreshRevision: refreshRevision ?? this.refreshRevision,
+  );
 }

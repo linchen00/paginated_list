@@ -14,8 +14,12 @@ class PaginatedRequestSlot {
     if (existing != null) return existing;
 
     final generation = ++_generation;
-    final future = action(() => generation == _generation);
+    final completer = Completer<void>();
+    final future = completer.future;
     _inFlight = future;
+    Future<void>.sync(
+      () => action(() => generation == _generation),
+    ).then(completer.complete, onError: completer.completeError);
     future.whenComplete(() {
       if (identical(_inFlight, future)) _inFlight = null;
     }).ignore();

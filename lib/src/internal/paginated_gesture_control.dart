@@ -4,13 +4,16 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../paginated_state.dart';
-import '../paginated_status.dart';
 
 /// 监听两端的真实滚动距离，并将一次滚动会话转换为刷新或加载请求。
 class PaginatedGestureControl<T> extends StatefulWidget {
   const PaginatedGestureControl({
     super.key,
     required this.state,
+    required this.refreshBusy,
+    required this.loadingBusy,
+    required this.onRefreshArmed,
+    required this.onLoadingArmed,
     required this.refreshTriggerDistance,
     required this.loadingTriggerDistance,
     required this.onRefresh,
@@ -19,6 +22,10 @@ class PaginatedGestureControl<T> extends StatefulWidget {
   });
 
   final PaginatedState<T> state;
+  final bool refreshBusy;
+  final bool loadingBusy;
+  final ValueChanged<bool> onRefreshArmed;
+  final ValueChanged<bool> onLoadingArmed;
   final double refreshTriggerDistance;
   final double loadingTriggerDistance;
   final VoidCallback? onRefresh;
@@ -33,18 +40,34 @@ class PaginatedGestureControl<T> extends StatefulWidget {
 class _PaginatedGestureControlState<T>
     extends State<PaginatedGestureControl<T>> {
   bool _refreshDragging = false;
+  bool _refreshArmed = false;
+  bool _loadingArmed = false;
   bool _loadSessionActive = false;
   bool _loadTriggeredInSession = false;
 
   @override
   void didUpdateWidget(covariant PaginatedGestureControl<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.state, widget.state)) {
-      _resetSessions();
-      return;
+    if (widget.onRefresh == null || widget.refreshBusy) {
+      _refreshDragging = false;
+      _refreshArmed = false;
     }
-    if (widget.onRefresh == null) _refreshDragging = false;
-    if (widget.onLoading == null) _resetLoadSession();
+    if (widget.onLoading == null || !_canLoad) {
+      _resetLoadSession();
+      _loadingArmed = false;
+    }
+  }
+
+  void _armRefresh(bool value) {
+    if (_refreshArmed == value) return;
+    _refreshArmed = value;
+    widget.onRefreshArmed(value);
+  }
+
+  void _armLoading(bool value) {
+    if (_loadingArmed == value) return;
+    _loadingArmed = value;
+    widget.onLoadingArmed(value);
   }
 
   bool _handleNotification(ScrollNotification notification) {
@@ -90,8 +113,7 @@ class _PaginatedGestureControlState<T>
 
   void _updateRefresh(ScrollMetrics metrics, {required bool isDragging}) {
     if (!_refreshDragging || widget.onRefresh == null) return;
-    final status = widget.state.refreshStatus;
-    if (status != RefreshStatus.idle && status != RefreshStatus.canRefresh) {
+    if (widget.refreshBusy) {
       _refreshDragging = false;
       return;
     }
@@ -102,29 +124,28 @@ class _PaginatedGestureControlState<T>
     );
     if (isDragging) {
       if (pulledExtent > 0 && pulledExtent >= widget.refreshTriggerDistance) {
-        widget.state.markCanRefresh();
+        _armRefresh(true);
       } else {
-        widget.state.cancelCanRefresh();
+        _armRefresh(false);
       }
       return;
     }
 
     _refreshDragging = false;
-    if (status == RefreshStatus.canRefresh && pulledExtent > 0) {
+    if (_refreshArmed && pulledExtent > 0) {
       widget.onRefresh!();
     } else {
-      widget.state.cancelCanRefresh();
+      _armRefresh(false);
     }
   }
 
   void _finishRefresh(ScrollMetrics metrics) {
     if (!_refreshDragging || widget.onRefresh == null) return;
     _refreshDragging = false;
-    if (widget.state.refreshStatus == RefreshStatus.canRefresh &&
-        metrics.pixels < metrics.minScrollExtent) {
+    if (_refreshArmed && metrics.pixels < metrics.minScrollExtent) {
       widget.onRefresh!();
     } else {
-      widget.state.cancelCanRefresh();
+      _armRefresh(false);
     }
   }
 
@@ -154,24 +175,23 @@ class _PaginatedGestureControlState<T>
     );
     if (isDragging) {
       if (pulledExtent > 0 && pulledExtent >= widget.loadingTriggerDistance) {
-        widget.state.markCanLoading();
+        _armLoading(true);
       } else {
-        widget.state.cancelCanLoading();
+        _armLoading(false);
       }
       return;
     }
 
-    if (widget.state.loadStatus == LoadStatus.canLoading && pulledExtent > 0) {
+    if (_loadingArmed && pulledExtent > 0) {
       _triggerLoading();
     } else {
-      widget.state.cancelCanLoading();
+      _armLoading(false);
       _loadSessionActive = false;
     }
   }
 
   bool get _canLoad =>
-      widget.state.loadStatus != LoadStatus.loading &&
-      widget.state.loadStatus != LoadStatus.noMore;
+      !widget.loadingBusy && !widget.state.isLoading && !widget.state.isNoMore;
 
   void _triggerLoading() {
     if (_loadTriggeredInSession || !_canLoad || widget.onLoading == null) {
@@ -184,18 +204,12 @@ class _PaginatedGestureControlState<T>
 
   void _finishLoading(ScrollMetrics metrics) {
     if (!_loadSessionActive || widget.onLoading == null) return;
-    if (widget.state.loadStatus == LoadStatus.canLoading &&
-        metrics.pixels > metrics.maxScrollExtent) {
+    if (_loadingArmed && metrics.pixels > metrics.maxScrollExtent) {
       _triggerLoading();
     } else {
-      widget.state.cancelCanLoading();
+      _armLoading(false);
       _loadSessionActive = false;
     }
-  }
-
-  void _resetSessions() {
-    _refreshDragging = false;
-    _resetLoadSession();
   }
 
   void _resetLoadSession() {

@@ -4,6 +4,9 @@ import 'package:paginated_list/paginated_list.dart';
 
 void main() {
   test('公开类型可从根 library 导入', () {
+    final controller = PaginatedController();
+    expect(controller.isAttached, isFalse);
+    controller.dispose();
     final state = PaginatedState<int>(items: [1]);
     ScrollView list(List<int> _) => ListView();
     ScrollView grid(List<int> _) => GridView.count(crossAxisCount: 1);
@@ -18,6 +21,7 @@ void main() {
     final FirstPageErrorIndicatorBuilder errorBuilder = error;
 
     expect(state.items, [1]);
+    expect(state.isNoMore, isFalse);
     expect(listBuilder([]), isA<ListView>());
     expect(gridBuilder([]), isA<GridView>());
     expect(customBuilder([]), isA<CustomScrollView>());

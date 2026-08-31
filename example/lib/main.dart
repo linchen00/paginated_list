@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:paginated_list/paginated_list.dart';
 
 import 'pre_bound_refresh_example.dart';
+import 'pagination_notifier.dart';
 
-void main() => runApp(const ExampleApp());
+void main() => runApp(const ProviderScope(child: ExampleApp()));
 
 Widget _buildHeader(RefreshStatus status) => switch (status) {
   RefreshStatus.idle => SizedBox(
@@ -57,61 +61,31 @@ class ExampleApp extends StatelessWidget {
   }
 }
 
-class PaginationExample extends StatefulWidget {
+class PaginationExample extends ConsumerStatefulWidget {
   const PaginationExample({super.key});
 
   @override
-  State<PaginationExample> createState() => _PaginationExampleState();
+  ConsumerState<PaginationExample> createState() => _PaginationExampleState();
 }
 
-class _PaginationExampleState extends State<PaginationExample> {
-  late final PaginatedState<int> state;
-  var page = 0;
+class _PaginationExampleState extends ConsumerState<PaginationExample> {
+  final controller = PaginatedController();
 
   @override
   void initState() {
     super.initState();
-    state = PaginatedState<int>();
-    _refresh();
-  }
-
-  Future<void> _refresh() async {
-    state.startRefresh();
-    try {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      page = 1;
-      state.items = List.generate(20, (index) => index + 1);
-      state.refreshCompleted();
-    } catch (_) {
-      state.refreshFailed();
-    }
-  }
-
-  Future<void> _loadMore() async {
-    state.startLoading();
-    try {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (page >= 3) {
-        state.loadNoData();
-        return;
-      }
-      final start = state.items.length;
-      state.items = [
-        ...state.items,
-        ...List.generate(20, (index) => start + index + 1),
-      ];
-      page++;
-      state.loadCompleted();
-    } catch (_) {
-      state.loadFailed();
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(ref.read(paginationProvider.notifier).refresh());
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(paginationProvider);
+    final notifier = ref.read(paginationProvider.notifier);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PaginatedList 示例'),
+        title: Text('PaginatedList · ${state.items.length} 项'),
         actions: [
           IconButton(
             tooltip: '绑定前刷新示例',
@@ -128,10 +102,11 @@ class _PaginationExampleState extends State<PaginationExample> {
         bottomPadding: 24,
         loadingTriggerDistance: 100,
         state: state,
+        controller: controller,
         headerBuilder: _buildHeader,
         footerBuilder: _buildFooter,
-        onRefresh: _refresh,
-        onLoading: _loadMore,
+        onRefresh: notifier.refresh,
+        onLoading: notifier.loadMore,
         itemsBuilder: (items) => ListView.builder(
           itemCount: items.length,
           itemBuilder: (_, index) => ListTile(
@@ -141,7 +116,12 @@ class _PaginationExampleState extends State<PaginationExample> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: state.requestRefresh,
+        onPressed: () => controller.requestRefresh().catchError((Object error) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('$error')));
+        }),
         tooltip: '程序化刷新',
         child: const Icon(Icons.refresh),
       ),
@@ -150,7 +130,7 @@ class _PaginationExampleState extends State<PaginationExample> {
 
   @override
   void dispose() {
-    state.dispose();
+    controller.dispose();
     super.dispose();
   }
 }

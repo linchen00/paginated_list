@@ -12,6 +12,7 @@ CustomScrollView composeScrollView({
   required Widget headerSliver,
   required Widget footerSliver,
   double bottomPadding = 0,
+  Widget? firstPageIndicator,
 }) {
   if (source is! ListView &&
       source is! GridView &&
@@ -22,8 +23,12 @@ CustomScrollView composeScrollView({
     );
   }
 
-  // ignore: invalid_use_of_protected_member
-  final content = source.buildSlivers(context);
+  final content = firstPageIndicator == null
+      // ignore: invalid_use_of_protected_member
+      ? source.buildSlivers(context)
+      : <Widget>[
+          SliverFillRemaining(hasScrollBody: false, child: firstPageIndicator),
+        ];
   return CustomScrollView(
     key: source.key,
     scrollDirection: source.scrollDirection,
@@ -33,12 +38,16 @@ CustomScrollView composeScrollView({
     physics: composePaginatedPhysics(source.physics),
     scrollBehavior: source.scrollBehavior,
     shrinkWrap: source.shrinkWrap,
-    center: source.center,
-    anchor: source.anchor,
+    // Source center/anchor refer to content slivers absent while an indicator
+    // replaces them. Restore both when the source content returns.
+    center: firstPageIndicator == null ? source.center : null,
+    anchor: firstPageIndicator == null ? source.anchor : 0,
     // ignore: deprecated_member_use
     cacheExtent: source.cacheExtent,
     scrollCacheExtent: source.scrollCacheExtent,
-    semanticChildCount: source.semanticChildCount,
+    semanticChildCount: firstPageIndicator == null
+        ? source.semanticChildCount
+        : 1,
     paintOrder: source.paintOrder,
     dragStartBehavior: source.dragStartBehavior,
     keyboardDismissBehavior: source.keyboardDismissBehavior,

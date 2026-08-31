@@ -12,14 +12,14 @@ class PreBoundRefreshExample extends StatefulWidget {
 }
 
 class _PreBoundRefreshExampleState extends State<PreBoundRefreshExample> {
-  late final PaginatedState<int> state;
+  late PaginatedState<int> state;
 
   @override
   void initState() {
     super.initState();
 
     // 先切换状态，再由 build() 创建 PaginatedList 并完成绑定。
-    state = PaginatedState<int>()..startRefresh();
+    state = PaginatedState<int>().startRefresh();
     unawaited(_fetchFirstPage());
   }
 
@@ -27,15 +27,18 @@ class _PreBoundRefreshExampleState extends State<PreBoundRefreshExample> {
     try {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
-      state.items = List.generate(20, (index) => index + 1);
-      state.refreshCompleted();
+      setState(() {
+        state = state.refreshCompleted(
+          items: List.generate(20, (index) => index + 1),
+        );
+      });
     } catch (_) {
-      if (mounted) state.refreshFailed();
+      if (mounted) setState(() => state = state.refreshFailed());
     }
   }
 
   Future<void> _refresh() {
-    state.startRefresh();
+    setState(() => state = state.startRefresh());
     return _fetchFirstPage();
   }
 
@@ -47,14 +50,18 @@ class _PreBoundRefreshExampleState extends State<PreBoundRefreshExample> {
         children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text(
-              'PaginatedState 在 initState 中先进入 refreshing，随后才绑定 PaginatedList。',
-            ),
+            child: Text('先发布 loading 快照，再创建 PaginatedList；无需绑定状态对象。'),
           ),
           Expanded(
             child: PaginatedList<int>(
               state: state,
               onRefresh: _refresh,
+              firstPageProgressIndicatorBuilder: () => const Center(
+                child: Text(
+                  '挂载前已进入 loading',
+                  key: ValueKey('pre-bound-refreshing'),
+                ),
+              ),
               headerBuilder: (status) => switch (status) {
                 RefreshStatus.idle => const SizedBox.shrink(),
                 RefreshStatus.refreshing => const SizedBox(
@@ -98,11 +105,5 @@ class _PreBoundRefreshExampleState extends State<PreBoundRefreshExample> {
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    state.dispose();
-    super.dispose();
   }
 }
