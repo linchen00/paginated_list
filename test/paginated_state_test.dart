@@ -65,7 +65,7 @@ void main() {
     final state = PaginatedState<int>();
     var notifications = 0;
     state.addListener(() => notifications++);
-    state.loadComplete();
+    state.loadCompleted();
     state.loadFailed();
     expect(notifications, 0);
     state.loadNoData();

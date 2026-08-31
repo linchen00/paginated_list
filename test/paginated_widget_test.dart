@@ -123,7 +123,7 @@ void main() {
           onRefresh: () => refreshCallback.future,
           onLoading: () async {
             loadingCalls++;
-            state.loadComplete();
+            state.loadCompleted();
           },
           itemsBuilder: (items) => ListView(
             children: items.map((item) => Text('item$item')).toList(),
@@ -724,7 +724,7 @@ void main() {
           loadingTriggerDistance: 15,
           onLoading: () async {
             calls++;
-            state.loadComplete();
+            state.loadCompleted();
           },
           itemsBuilder: (items) =>
               ListView(children: items.map((item) => Text('$item')).toList()),
@@ -750,7 +750,7 @@ void main() {
           footerBuilder: _emptyFooter,
           onLoading: () async {
             calls++;
-            state.loadComplete();
+            state.loadCompleted();
           },
           itemsBuilder: (items) => ListView.builder(
             itemExtent: 40,
@@ -818,7 +818,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 32));
     expect(calls, 1);
     callback.complete();
-    state.loadComplete();
+    state.loadCompleted();
     await tester.pumpAndSettle();
     controller.dispose();
   });
@@ -888,7 +888,7 @@ void main() {
     expect(find.byKey(loadingKey), findsOneWidget);
 
     callback.complete();
-    state.loadComplete();
+    state.loadCompleted();
     await tester.pumpAndSettle();
   });
 
@@ -933,7 +933,7 @@ void main() {
     expect(state.loadStatus, LoadStatus.loading);
 
     callback.complete();
-    state.loadComplete();
+    state.loadCompleted();
     await tester.pumpAndSettle();
   });
 
@@ -958,7 +958,7 @@ void main() {
               },
               onLoading: () async {
                 loadingCalls++;
-                state.loadComplete();
+                state.loadCompleted();
               },
               itemsBuilder: (items) => ListView(
                 scrollDirection: testCase.axis,

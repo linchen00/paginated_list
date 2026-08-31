@@ -43,7 +43,7 @@ Future<void> loadMore() async {
       state.loadNoData();
     } else {
       state.items = [...state.items, ...next];
-      state.loadComplete();
+      state.loadCompleted();
     }
   } catch (_) {
     state.loadFailed();
@@ -75,7 +75,7 @@ PaginatedList<String>(
 
 `start*()` 只改变状态，不滚动也不调用回调。`request*()` 必须在列表完成挂载后调用，会先展示对应指示器，再等待完整业务回调。同类并发 request 会共享同一个 Future。
 
-数据更新与状态结束彼此独立：`refreshCompleted()`、`loadComplete()` 不会替换或追加 items。一个 `PaginatedState` 同一时刻只能绑定一个 `PaginatedList`，并由业务方负责 `dispose()`。
+数据更新与状态结束彼此独立：`refreshCompleted()`、`loadCompleted()` 不会替换或追加 items。一个 `PaginatedState` 同一时刻只能绑定一个 `PaginatedList`，并由业务方负责 `dispose()`。
 
 `loadingTriggerDistance` 使用列表的真实滚动距离：长列表向末端滚动进入该距离时会直接预加载；内容不足一屏时不会在挂载后自动加载，只有用户主动上拉超过该距离并松手才会触发。一次滚动手势最多触发一次加载请求。
 

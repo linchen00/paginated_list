@@ -131,7 +131,7 @@ class PaginatedState<T> extends ChangeNotifier {
   }
 
   /// 完成加载并恢复空闲状态。
-  void loadComplete() {
+  void loadCompleted() {
     if (_loadStatus != LoadStatus.loading) return;
     _setLoad(LoadStatus.idle);
   }

@@ -101,7 +101,7 @@ class _PaginationExampleState extends State<PaginationExample> {
         ...List.generate(20, (index) => start + index + 1),
       ];
       page++;
-      state.loadComplete();
+      state.loadCompleted();
     } catch (_) {
       state.loadFailed();
     }
