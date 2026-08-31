@@ -27,6 +27,7 @@ void main() {
     expect(customBuilder([]), isA<CustomScrollView>());
     expect(indicatorBuilder(), isA<SizedBox>());
     expect(errorBuilder(null), isA<SizedBox>());
-    expect(FirstPageStatus.values, contains(FirstPageStatus.completed));
+    expect(RefreshStatus.values, contains(RefreshStatus.completed));
+    expect(LoadStatus.values, contains(LoadStatus.noMore));
   });
 }

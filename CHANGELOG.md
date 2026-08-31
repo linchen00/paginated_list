@@ -1,5 +1,7 @@
 ## Unreleased
 
+* Breaking: 移除 FirstPageStatus 和 PaginatedState.firstPageStatus；首屏展示由 items 与 refreshStatus 决定，增删数据无需同步额外状态。
+* 首屏和后续刷新统一使用 refreshing/completed/failed；refreshToIdle 统一清除刷新状态。
 * 修复动画期间外部刷新已经结束后仍重复请求的问题。
 * 首屏指示器复用原始视口配置，避免横向或带 Key 的列表在刷新展示时使请求失效。
 

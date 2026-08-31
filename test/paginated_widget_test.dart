@@ -150,8 +150,7 @@ void main() {
     expect(find.text('first-empty'), findsOneWidget);
     final refresh = state.controller.requestRefresh();
     await tester.pumpAndSettle();
-    expect(state.value.firstPageStatus, FirstPageStatus.loading);
-    expect(state.value.refreshStatus, RefreshStatus.idle);
+    expect(state.value.refreshStatus, RefreshStatus.refreshing);
     expect(find.text('first-loading'), findsOneWidget);
 
     state.value = state.value.copyWith(items: [1]);
@@ -160,7 +159,7 @@ void main() {
     await refresh;
     await tester.pump();
 
-    expect(state.value.firstPageStatus, FirstPageStatus.completed);
+    expect(state.value.refreshStatus, RefreshStatus.completed);
     expect(find.text('item1'), findsOneWidget);
 
     final loading = state.controller.requestLoading();
@@ -168,6 +167,147 @@ void main() {
     await loading;
     expect(loadingCalls, 1);
   });
+
+  for (final initiallyLoaded in [false, true]) {
+    testWidgets('copyWith 添加数据退出${initiallyLoaded ? '请求后的' : '初始'}空页面并支持分页', (
+      tester,
+    ) async {
+      final state = PaginationTestHost<int>();
+      if (initiallyLoaded) {
+        state.value = state.value.startRefresh().refreshCompleted(items: []);
+      }
+      var loadingCalls = 0;
+      await tester.pumpWidget(
+        state.build(
+          () => MaterialApp(
+            home: PaginatedList<int>(
+              state: state.value,
+              controller: state.controller,
+              headerBuilder: _emptyHeader,
+              footerBuilder: (_) => const Text('page-footer'),
+              firstPageEmptyIndicatorBuilder: () => const Text('first-empty'),
+              onLoading: () async {
+                loadingCalls++;
+                state.value = state.value.startLoading().loadCompleted(
+                  items: [...state.value.items, 2],
+                );
+              },
+              itemsBuilder: (items) => ListView(
+                children: items.map((item) => Text('item$item')).toList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('first-empty'), findsOneWidget);
+      expect(find.text('page-footer'), findsNothing);
+
+      state.value = state.value.copyWith(items: [1]);
+      await tester.pump();
+      expect(find.text('first-empty'), findsNothing);
+      expect(find.text('item1'), findsOneWidget);
+      expect(find.text('page-footer'), findsOneWidget);
+
+      final loading = state.controller.requestLoading();
+      await tester.pumpAndSettle();
+      await loading;
+      expect(loadingCalls, 1);
+      expect(find.text('item2'), findsOneWidget);
+
+      state.value = state.value.copyWith(items: []);
+      await tester.pump();
+      expect(find.text('first-empty'), findsOneWidget);
+      expect(find.text('item1'), findsNothing);
+      expect(find.text('item2'), findsNothing);
+      expect(find.text('page-footer'), findsNothing);
+    });
+  }
+
+  for (final status in [
+    RefreshStatus.idle,
+    RefreshStatus.refreshing,
+    RefreshStatus.completed,
+    RefreshStatus.failed,
+  ]) {
+    testWidgets('增删最后一项按 items 和 $status 切换展示', (tester) async {
+      final state = PaginationTestHost<int>();
+      RefreshStatus? presented;
+      final indicator = switch (status) {
+        RefreshStatus.refreshing => 'first-loading',
+        RefreshStatus.failed => 'first-error',
+        _ => 'first-empty',
+      };
+      await tester.pumpWidget(
+        state.build(
+          () => MaterialApp(
+            home: PaginatedList<int>(
+              state: state.value,
+              controller: state.controller,
+              headerBuilder: (status) {
+                presented = status;
+                return const SizedBox(height: 48);
+              },
+              footerBuilder: (_) => const Text('page-footer'),
+              firstPageEmptyIndicatorBuilder: () => const Text('first-empty'),
+              firstPageProgressIndicatorBuilder: () =>
+                  const Text('first-loading'),
+              firstPageErrorIndicatorBuilder: (_) => const Text('first-error'),
+              onLoading: () async {},
+              itemsBuilder: (items) => ListView(
+                children: items.map((item) => Text('item$item')).toList(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      state.value = switch (status) {
+        RefreshStatus.refreshing => state.value.startRefresh(),
+        RefreshStatus.completed =>
+          state.value.startRefresh().refreshCompleted(),
+        RefreshStatus.failed => state.value.startRefresh().refreshFailed(),
+        _ => state.value,
+      };
+      await tester.pump();
+      expect(find.text(indicator), findsOneWidget);
+
+      state.value = state.value.copyWith(items: [1, 2]);
+      await tester.pump();
+      expect(find.text('item1'), findsOneWidget);
+      expect(find.text('item2'), findsOneWidget);
+      expect(find.text('first-empty'), findsNothing);
+      expect(find.text('first-loading'), findsNothing);
+      expect(find.text('first-error'), findsNothing);
+      expect(find.text('page-footer'), findsOneWidget);
+
+      state.value = state.value.copyWith(
+        items: state.value.items.where((item) => item != 1).toList(),
+      );
+      await tester.pump();
+      expect(find.text('item1'), findsNothing);
+      expect(find.text('item2'), findsOneWidget);
+
+      state.value = state.value.copyWith(items: []);
+      await tester.pump();
+      expect(state.value.refreshStatus, status);
+      expect(find.text('item2'), findsNothing);
+      expect(find.text(indicator), findsOneWidget);
+      expect(find.text('page-footer'), findsNothing);
+      await expectLater(state.controller.requestLoading(), throwsStateError);
+
+      state.value = state.value.copyWith(items: [3]);
+      await tester.pump();
+      expect(find.text('item3'), findsOneWidget);
+      expect(find.text(indicator), findsNothing);
+      expect(find.text('page-footer'), findsOneWidget);
+      // 数据变化不补播之前的刷新结果，也不会结束正在进行的刷新。
+      final headerStatus = status == RefreshStatus.refreshing
+          ? RefreshStatus.refreshing
+          : RefreshStatus.idle;
+      expect(presented, headerStatus);
+    });
+  }
 
   testWidgets('首屏失败状态通过同一个 requestRefresh 重试', (tester) async {
     final state = PaginationTestHost<int>();
@@ -202,14 +342,14 @@ void main() {
     await tester.pumpAndSettle();
     await firstRefresh;
     await tester.pump();
-    expect(state.value.firstPageStatus, FirstPageStatus.error);
+    expect(state.value.refreshStatus, RefreshStatus.failed);
     expect(find.text('first-error'), findsOneWidget);
     expect(retry, isNotNull);
 
     retry!();
     await tester.pumpAndSettle();
     expect(refreshCalls, 2);
-    expect(state.value.firstPageStatus, FirstPageStatus.error);
+    expect(state.value.refreshStatus, RefreshStatus.failed);
   });
 
   testWidgets('首屏 Indicator 未配置时回退到 itemsBuilder', (tester) async {
@@ -231,21 +371,21 @@ void main() {
     );
     await tester.pump();
 
-    expect(state.value.firstPageStatus, FirstPageStatus.idle);
+    expect(state.value.refreshStatus, RefreshStatus.idle);
     expect(find.text('items-builder-empty'), findsOneWidget);
 
     state.value = state.value.startRefresh();
     await tester.pump();
-    expect(state.value.firstPageStatus, FirstPageStatus.loading);
+    expect(state.value.refreshStatus, RefreshStatus.refreshing);
     expect(find.text('items-builder-empty'), findsOneWidget);
 
     state.value = state.value.refreshFailed();
     await tester.pump();
-    expect(state.value.firstPageStatus, FirstPageStatus.error);
+    expect(state.value.refreshStatus, RefreshStatus.failed);
     expect(find.text('items-builder-empty'), findsOneWidget);
   });
 
-  testWidgets('首屏未完成时不构建或布局 Header 和 Footer', (tester) async {
+  testWidgets('没有数据时不构建或布局 Header 和 Footer', (tester) async {
     final state = PaginationTestHost<int>();
     var headerBuilds = 0;
     var footerBuilds = 0;
@@ -283,7 +423,7 @@ void main() {
     state.value = state.value.refreshCompleted();
     await tester.pump();
 
-    expect(state.value.firstPageStatus, FirstPageStatus.completed);
+    expect(state.value.refreshStatus, RefreshStatus.completed);
     expect(headerBuilds, 1);
     expect(footerBuilds, 1);
     expect(find.text('page-footer'), findsOneWidget);

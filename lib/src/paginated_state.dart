@@ -8,35 +8,24 @@ import 'paginated_status.dart';
 @immutable
 class PaginatedState<T> {
   PaginatedState({List<T> items = const []})
-    : this._(
-        items: List<T>.unmodifiable(items),
-        firstPageStatus: items.isEmpty
-            ? FirstPageStatus.idle
-            : FirstPageStatus.completed,
-      );
+    : this._(items: List<T>.unmodifiable(items));
 
   const PaginatedState._({
     required this.items,
-    required this.firstPageStatus,
     this.refreshStatus = RefreshStatus.idle,
     this.loadStatus = LoadStatus.idle,
-    this._firstPageBeforeLoading = FirstPageStatus.idle,
     this.refreshRevision = 0,
   });
 
   final List<T> items;
-  final FirstPageStatus firstPageStatus;
   final RefreshStatus refreshStatus;
   final LoadStatus loadStatus;
-  final FirstPageStatus _firstPageBeforeLoading;
 
   /// 仅用于视图区分连续刷新提示，不代表网络请求令牌。
   @internal
   final int refreshRevision;
 
-  bool get isRefreshing =>
-      firstPageStatus == FirstPageStatus.loading ||
-      refreshStatus == RefreshStatus.refreshing;
+  bool get isRefreshing => refreshStatus == RefreshStatus.refreshing;
   bool get isLoading => loadStatus == LoadStatus.loading;
   bool get isNoMore => loadStatus == LoadStatus.noMore;
 
@@ -47,13 +36,7 @@ class PaginatedState<T> {
   PaginatedState<T> startRefresh() {
     if (isRefreshing) return this;
     return _next(
-      firstPageStatus: firstPageStatus == FirstPageStatus.completed
-          ? firstPageStatus
-          : FirstPageStatus.loading,
-      refreshStatus: firstPageStatus == FirstPageStatus.completed
-          ? RefreshStatus.refreshing
-          : RefreshStatus.idle,
-      firstPageBeforeLoading: firstPageStatus,
+      refreshStatus: RefreshStatus.refreshing,
       refreshRevision: refreshRevision + 1,
     );
   }
@@ -63,31 +46,18 @@ class PaginatedState<T> {
   /// 不取消尚未完成的加载请求；业务需自行忽略过期响应。
   PaginatedState<T> refreshCompleted({List<T>? items}) {
     if (!isRefreshing) return this;
-    final empty = (items ?? this.items).isEmpty;
     return _next(
       items: items,
-      firstPageStatus: empty
-          ? FirstPageStatus.empty
-          : FirstPageStatus.completed,
-      refreshStatus: firstPageStatus == FirstPageStatus.loading
-          ? RefreshStatus.idle
-          : RefreshStatus.completed,
+      refreshStatus: RefreshStatus.completed,
       loadStatus: LoadStatus.idle,
     );
   }
 
-  PaginatedState<T> refreshFailed() {
-    if (!isRefreshing) return this;
-    return firstPageStatus == FirstPageStatus.loading
-        ? _next(firstPageStatus: FirstPageStatus.error)
-        : _next(refreshStatus: RefreshStatus.failed);
-  }
+  PaginatedState<T> refreshFailed() =>
+      isRefreshing ? _next(refreshStatus: RefreshStatus.failed) : this;
 
   /// 业务主动结束刷新或清除结果；视图收起提示不会调用本方法。
   PaginatedState<T> refreshToIdle() {
-    if (firstPageStatus == FirstPageStatus.loading) {
-      return _next(firstPageStatus: _firstPageBeforeLoading);
-    }
     if (refreshStatus == RefreshStatus.idle) return this;
     return _next(refreshStatus: RefreshStatus.idle);
   }
@@ -112,17 +82,13 @@ class PaginatedState<T> {
 
   PaginatedState<T> _next({
     List<T>? items,
-    FirstPageStatus? firstPageStatus,
     RefreshStatus? refreshStatus,
     LoadStatus? loadStatus,
-    FirstPageStatus? firstPageBeforeLoading,
     int? refreshRevision,
   }) => PaginatedState._(
     items: items == null ? this.items : List<T>.unmodifiable(items),
-    firstPageStatus: firstPageStatus ?? this.firstPageStatus,
     refreshStatus: refreshStatus ?? this.refreshStatus,
     loadStatus: loadStatus ?? this.loadStatus,
-    firstPageBeforeLoading: firstPageBeforeLoading ?? _firstPageBeforeLoading,
     refreshRevision: refreshRevision ?? this.refreshRevision,
   );
 }

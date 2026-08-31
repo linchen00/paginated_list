@@ -13,10 +13,14 @@ void main() {
     expect(find.text('PaginatedList · 0 项'), findsOneWidget);
     expect(find.byTooltip('程序化刷新'), findsOneWidget);
     expect(find.byTooltip('绑定前刷新示例'), findsOneWidget);
+    expect(find.byTooltip('数据增删与空状态'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('PaginatedList · 20 项'), findsOneWidget);
+    await tester.tap(find.byTooltip('数据增删与空状态'));
+    await tester.pumpAndSettle();
+    expect(find.text('暂无数据，点击「添加一项」'), findsOneWidget);
   });
 
   testWidgets('PaginatedState 可在绑定 UI 前进入刷新状态', (tester) async {

@@ -31,7 +31,7 @@ void main() {
     expect(identical(state.loadFailed(), state), isTrue);
     expect(identical(state.resetNoData(), state), isTrue);
     final updated = state.copyWith(items: [1]);
-    expect(updated.firstPageStatus, FirstPageStatus.idle);
+    expect(updated.refreshStatus, RefreshStatus.idle);
     expect(updated.items, [1]);
     final refreshing = state.startRefresh();
     expect(identical(refreshing.startRefresh(), refreshing), isTrue);
@@ -39,25 +39,82 @@ void main() {
     expect(identical(loading.startLoading(), loading), isTrue);
   });
 
-  test('首屏失败、重试、空数据和普通刷新状态互斥', () {
+  test('copyWith 增删数据保持快照不可变且不改变刷新状态', () {
+    final initial = PaginatedState<int>();
+    final cases = [
+      initial,
+      initial.startRefresh().refreshCompleted(),
+      initial.startRefresh().refreshFailed(),
+    ];
+    for (final old in cases) {
+      final source = [1];
+      final updated = old.copyWith(items: source);
+      source.add(2);
+      expect(updated.items, [1]);
+      expect(updated.refreshStatus, old.refreshStatus);
+      expect(old.items, isEmpty);
+      expect(() => updated.items.add(3), throwsUnsupportedError);
+      final cleared = updated.copyWith(items: []);
+      expect(cleared.items, isEmpty);
+      expect(cleared.refreshStatus, old.refreshStatus);
+      expect(cleared.copyWith(items: [2]).items, [2]);
+      expect(old.copyWith(items: []).refreshStatus, old.refreshStatus);
+    }
+  });
+
+  test('copyWith 保留首屏请求，仍可正常提交刷新结果', () {
+    final loading = PaginatedState<int>().startRefresh().startLoading();
+    final updated = loading.copyWith(items: [1]);
+    expect(updated.refreshStatus, RefreshStatus.refreshing);
+    expect(updated.isRefreshing, isTrue);
+    expect(updated.loadStatus, LoadStatus.loading);
+    expect(updated.refreshRevision, loading.refreshRevision);
+    final completed = updated.refreshCompleted();
+    expect(completed.items, [1]);
+    expect(completed.refreshStatus, RefreshStatus.completed);
+    expect(completed.isRefreshing, isFalse);
+    expect(completed.loadStatus, LoadStatus.idle);
+  });
+
+  test('copyWith 增删数据时保留刷新和加载更多状态', () {
+    final initial = PaginatedState<int>(items: [1]);
+    final cases = [
+      initial.startRefresh().startLoading(),
+      initial.startRefresh().refreshFailed().startLoading().loadFailed(),
+      initial.startRefresh().refreshCompleted().loadNoData(),
+    ];
+    for (final old in cases) {
+      final cleared = old.copyWith(items: []);
+      final updated = cleared.copyWith(items: [2]);
+      expect(cleared.refreshStatus, old.refreshStatus);
+      expect(updated.refreshStatus, old.refreshStatus);
+      for (final next in [cleared, updated]) {
+        expect(next.refreshStatus, old.refreshStatus);
+        expect(next.loadStatus, old.loadStatus);
+        expect(next.refreshRevision, old.refreshRevision);
+      }
+    }
+  });
+
+  test('首屏与有数据的刷新共用刷新状态，数据独立更新', () {
     var state = PaginatedState<int>();
-    expect(state.firstPageStatus, FirstPageStatus.idle);
+    expect(state.refreshStatus, RefreshStatus.idle);
+    expect(state.items, isEmpty);
     state = state.startRefresh();
-    expect(state.firstPageStatus, FirstPageStatus.loading);
-    expect(state.refreshStatus, RefreshStatus.idle);
+    expect(state.refreshStatus, RefreshStatus.refreshing);
     state = state.refreshFailed();
-    expect(state.firstPageStatus, FirstPageStatus.error);
-    state = state.startRefresh().refreshCompleted(items: []);
-    expect(state.firstPageStatus, FirstPageStatus.empty);
-    state = state.startRefresh().refreshCompleted(items: [1]);
-    expect(state.firstPageStatus, FirstPageStatus.completed);
-    expect(state.refreshStatus, RefreshStatus.idle);
-    state = state.startRefresh().refreshFailed();
-    expect(state.items, [1]);
-    expect(state.firstPageStatus, FirstPageStatus.completed);
     expect(state.refreshStatus, RefreshStatus.failed);
     state = state.startRefresh().refreshCompleted(items: []);
-    expect(state.firstPageStatus, FirstPageStatus.empty);
+    expect(state.items, isEmpty);
+    expect(state.refreshStatus, RefreshStatus.completed);
+    state = state.startRefresh().refreshCompleted(items: [1]);
+    expect(state.items, [1]);
+    expect(state.refreshStatus, RefreshStatus.completed);
+    state = state.startRefresh().refreshFailed();
+    expect(state.items, [1]);
+    expect(state.refreshStatus, RefreshStatus.failed);
+    state = state.startRefresh().refreshCompleted(items: []);
+    expect(state.items, isEmpty);
     expect(state.refreshStatus, RefreshStatus.completed);
   });
 
@@ -100,11 +157,11 @@ void main() {
     expect(loading.loadFailed().loadStatus, LoadStatus.failed);
   });
 
-  test('业务取消首屏恢复先前状态，清除普通结果保留数据', () {
+  test('业务取消首屏和清除普通结果均回到 idle 并保留数据', () {
     final error = PaginatedState<int>().startRefresh().refreshFailed();
     expect(
-      error.startRefresh().refreshToIdle().firstPageStatus,
-      FirstPageStatus.error,
+      error.startRefresh().refreshToIdle().refreshStatus,
+      RefreshStatus.idle,
     );
     final completed = PaginatedState<int>(
       items: [1],

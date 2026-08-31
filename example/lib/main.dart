@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:paginated_list/paginated_list.dart';
 
+import 'items_state_example.dart';
 import 'pre_bound_refresh_example.dart';
 import 'pagination_notifier.dart';
 
@@ -87,6 +88,15 @@ class _PaginationExampleState extends ConsumerState<PaginationExample> {
       appBar: AppBar(
         title: Text('PaginatedList · ${state.items.length} 项'),
         actions: [
+          IconButton(
+            tooltip: '数据增删与空状态',
+            icon: const Icon(Icons.playlist_add),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ItemsStateExample(),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: '绑定前刷新示例',
             icon: const Icon(Icons.hourglass_top),

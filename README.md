@@ -96,7 +96,8 @@ PaginatedState<T> resetNoData();
 - `items` 是完整替换列表；包不自动追加。`loadNoData(items: merged)` 可同时提交最后一页和终态。
 - 合法的 `refreshCompleted()` 一次提交数据与结果，始终将加载状态重置为 `idle`，即使旧加载仍未返回；它不取消网络 Future。
 - 非法完成操作不接受其中的数据更新；无效或重复操作返回原对象。
-- `copyWith` 只替换数据，不改变请求状态。空调用返回原对象。
+- `copyWith` 只替换完整数据，保留刷新和加载更多状态。空调用返回原对象。添加或删除数据后，视图直接根据 `items.isEmpty` 切换，无需同步额外首屏状态。
+- 首屏请求和后续刷新共用 `refreshStatus`：`startRefresh()` 设置 `refreshing`，成功或失败设置 `completed` / `failed`；`refreshToIdle()` 统一回到 `idle`，不恢复之前的错误状态。
 - 输入列表复制为不可修改快照，元素不深拷贝。修改元素时请提供新元素和新列表。
 - 不定义深度相等比较；有效转换产生新对象，状态不需要 `dispose()`。
 
@@ -132,7 +133,16 @@ Controller 不保存数据。每个 Controller 同时只能绑定一个列表；
 
 ## 首屏与指示器
 
-首屏状态区分 `idle`、`loading`、`empty`、`error` 和 `completed`，可设置首屏进度、空数据和错误 builder。错误 builder 接收可选重试回调。未配置首屏 builder 时回退到 `itemsBuilder`。首屏展示期间也会调用 `itemsBuilder` 获取原始滚动配置，但只渲染指示器内容，保持方向、Controller 和视口 Key；自定义内容的 center/anchor 在内容恢复后再恢复。
+首屏展示由 `items` 和 `refreshStatus` 共同决定，不再维护独立的 `FirstPageStatus`：
+
+| 数据 | 刷新状态 | 展示 |
+| --- | --- | --- |
+| 非空 | 任意 | 列表内容，刷新状态由 Header 展示 |
+| 空 | `refreshing` | 首屏进度 builder |
+| 空 | `failed` | 首屏错误 builder |
+| 空 | `idle` / `completed` | 首屏空数据 builder |
+
+错误 builder 接收可选重试回调。未配置对应首屏 builder 时回退到 `itemsBuilder`。首屏展示期间也会调用 `itemsBuilder` 获取原始滚动配置，但只渲染指示器内容，保持方向、Controller 和视口 Key；自定义内容的 center/anchor 在内容恢复后再恢复。空列表不启用分页加载；添加数据后自动恢复。删除最后一项后按当前刷新状态显示进度、错误或空数据。
 
 Header/Footer 为必填 builder，尺寸来自实际输出，不提供默认尺寸、图标或文案。支持 ListView、GridView、CustomScrollView，支持横向、`reverse` 和 RTL。
 
@@ -141,7 +151,7 @@ Header/Footer 为必填 builder，尺寸来自实际输出，不提供默认尺�
 - `canRefresh` / `canLoading` 只用于展示手势阈值，不进入业务快照。
 - 刷新业务保留 `completed` / `failed`；组件按 `refreshResultDuration` 收起提示后，Header 展示 `idle`，不写回业务状态。
 - 已收起结果不因普通重建重播；新一轮相同结果仍可展示。
-- 首次挂载不补播已有结果，首屏请求不展示普通 Header/Footer。
+- 首次挂载不补播已有结果，没有数据时不展示普通 Header/Footer。
 - 程序化动画期间可临时显示忙碌，但业务状态在回调发布新快照后才改变。
 
 `loadingTriggerDistance` 使用真实滚动距离：长列表向末端滚动进入阈值时预加载；短列表只有主动上拉超过阈值并松手才加载。一次滚动手势最多触发一次加载。
