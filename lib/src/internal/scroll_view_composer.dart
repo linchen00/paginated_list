@@ -11,6 +11,7 @@ CustomScrollView composeScrollView({
   required ScrollView source,
   required Widget headerSliver,
   required Widget footerSliver,
+  double bottomPadding = 0,
 }) {
   if (source is! ListView &&
       source is! GridView &&
@@ -44,6 +45,19 @@ CustomScrollView composeScrollView({
     restorationId: source.restorationId,
     clipBehavior: source.clipBehavior,
     hitTestBehavior: source.hitTestBehavior,
-    slivers: [headerSliver, ...content, footerSliver],
+    slivers: [
+      headerSliver,
+      ...content,
+      footerSliver,
+      if (bottomPadding > 0)
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: source.scrollDirection == Axis.vertical ? bottomPadding : 0,
+            width: source.scrollDirection == Axis.horizontal
+                ? bottomPadding
+                : 0,
+          ),
+        ),
+    ],
   );
 }

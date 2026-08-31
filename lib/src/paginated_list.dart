@@ -26,13 +26,15 @@ class PaginatedList<T> extends StatefulWidget {
     this.firstPageProgressIndicatorBuilder,
     this.onRefresh,
     this.onLoading,
+    this.bottomPadding = 0,
     this.refreshTriggerDistance = 60,
     this.loadingTriggerDistance = 60,
     this.requestRefreshDuration = const Duration(milliseconds: 500),
     this.requestLoadingDuration = const Duration(milliseconds: 300),
     this.refreshResultDuration = const Duration(milliseconds: 500),
     this.requestCurve = Curves.linear,
-  }) : assert(refreshTriggerDistance >= 0),
+  }) : assert(bottomPadding >= 0 && bottomPadding < double.infinity),
+       assert(refreshTriggerDistance >= 0),
        assert(loadingTriggerDistance >= 0);
 
   final PaginatedState<T> state;
@@ -44,6 +46,11 @@ class PaginatedList<T> extends StatefulWidget {
   final FirstPageIndicatorBuilder? firstPageProgressIndicatorBuilder;
   final AsyncCallback? onRefresh;
   final AsyncCallback? onLoading;
+
+  /// Footer 之后随内容滚动的留白，必须为有限非负值，默认不留白。
+  ///
+  /// 横向列表沿水平方向留白；reverse 与 RTL 下仍位于内容末端。
+  final double bottomPadding;
   final double refreshTriggerDistance;
   final double loadingTriggerDistance;
   final Duration requestRefreshDuration;
@@ -394,6 +401,7 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
           source: view,
           headerSliver: headerSliver,
           footerSliver: footerSliver,
+          bottomPadding: widget.bottomPadding,
         ),
       ),
     );

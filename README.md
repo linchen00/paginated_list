@@ -52,6 +52,7 @@ Future<void> loadMore() async {
 
 PaginatedList<String>(
   state: state,
+  bottomPadding: 24,
   onRefresh: refresh,
   onLoading: loadMore,
   headerBuilder: (status) => status == RefreshStatus.idle
@@ -78,6 +79,8 @@ PaginatedList<String>(
 数据更新与状态结束彼此独立：`refreshCompleted()`、`loadCompleted()` 不会替换或追加 items。一个 `PaginatedState` 同一时刻只能绑定一个 `PaginatedList`，并由业务方负责 `dispose()`。
 
 `loadingTriggerDistance` 使用列表的真实滚动距离：长列表向末端滚动进入该距离时会直接预加载；内容不足一屏时不会在挂载后自动加载，只有用户主动上拉超过该距离并松手才会触发。一次滚动手势最多触发一次加载请求。
+
+`bottomPadding` 在 Footer 之后添加随内容滚动的留白，默认 `0`，必须为有限非负值。它与 `itemsBuilder` 中列表原有的 padding 叠加；横向列表沿水平方向留白，`reverse` 或 RTL 下仍位于内容末端。
 
 ## 自定义指示器
 

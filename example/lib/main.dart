@@ -125,6 +125,7 @@ class _PaginationExampleState extends State<PaginationExample> {
         ],
       ),
       body: PaginatedList<int>(
+        bottomPadding: 24,
         loadingTriggerDistance: 100,
         state: state,
         headerBuilder: _buildHeader,
