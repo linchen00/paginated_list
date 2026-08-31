@@ -142,9 +142,8 @@ class PaginatedState<T> extends ChangeNotifier {
     _setLoad(LoadStatus.failed);
   }
 
-  /// 结束加载并标记没有更多数据。
+  /// 标记没有更多数据，不限制当前加载状态。
   void loadNoData() {
-    if (_loadStatus != LoadStatus.loading) return;
     _setLoad(LoadStatus.noMore);
   }
 

@@ -61,15 +61,18 @@ void main() {
     expect(state.refreshStatus, RefreshStatus.failed);
   });
 
-  test('加载状态机拒绝非法调用', () {
+  test('加载状态机拒绝非法调用，但允许直接标记没有更多数据', () {
     final state = PaginatedState<int>();
     var notifications = 0;
     state.addListener(() => notifications++);
     state.loadComplete();
     state.loadFailed();
-    state.loadNoData();
-    state.resetNoData();
     expect(notifications, 0);
+    state.loadNoData();
+    expect(state.loadStatus, LoadStatus.noMore);
+    expect(notifications, 1);
+    state.resetNoData();
+    expect(notifications, 2);
 
     expect(state.isLoading, isFalse);
     state.startLoading();
