@@ -401,6 +401,7 @@ void main() {
               return const SizedBox(height: 48, child: Text('page-header'));
             },
             firstPageEmptyIndicatorBuilder: () => const Text('first-page'),
+            onLoading: () async {},
             footerBuilder: (_) {
               footerBuilds++;
               return const SizedBox(height: 48, child: Text('page-footer'));
@@ -463,13 +464,13 @@ void main() {
 
     expect(itemBuilds, 2);
     expect(headerBuilds, 2);
-    expect(footerBuilds, 2);
+    expect(footerBuilds, 0);
 
     state.value = state.value.copyWith(items: [2]);
     await tester.pump();
     expect(itemBuilds, 3);
     expect(headerBuilds, 3);
-    expect(footerBuilds, 3);
+    expect(footerBuilds, 0);
   });
 
   testWidgets('刷新提示收起不修改业务结果', (tester) async {

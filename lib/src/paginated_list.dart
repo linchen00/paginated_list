@@ -48,6 +48,8 @@ class PaginatedList<T> extends StatefulWidget {
   final FirstPageErrorIndicatorBuilder? firstPageErrorIndicatorBuilder;
   final FirstPageIndicatorBuilder? firstPageProgressIndicatorBuilder;
   final AsyncCallback? onRefresh;
+
+  /// 加载更多回调；为 null 时不构建或展示 Footer。
   final AsyncCallback? onLoading;
 
   /// Footer 之后随内容滚动的留白，必须为有限非负值，默认不留白。
@@ -405,10 +407,11 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
     final view = widget.itemsBuilder(widget.state.items);
     final firstPageIndicator = _buildFirstPageIndicator();
     final hasItems = widget.state.items.isNotEmpty;
+    final showFooter = hasItems && widget.onLoading != null;
     final header = hasItems
         ? widget.headerBuilder(_refreshStatus)
         : const SizedBox.shrink();
-    final footer = hasItems
+    final footer = showFooter
         ? widget.footerBuilder(_loadStatus)
         : const SizedBox.shrink();
     final headerSliver = PaginatedRefreshSliver(
@@ -426,7 +429,7 @@ class _PaginatedListState<T> extends State<PaginatedList<T>>
       ),
     );
     final footerSliver = PaginatedLoadSliver(
-      occupiesLayout: hasItems && _loadStatus != LoadStatus.canLoading,
+      occupiesLayout: showFooter && _loadStatus != LoadStatus.canLoading,
       child: PaginatedIndicatorHost(
         key: const ValueKey('pagination-footer'),
         axis: view.scrollDirection,

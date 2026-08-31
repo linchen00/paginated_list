@@ -16,6 +16,7 @@ void main() {
           state: state,
           headerBuilder: (_) => const Text('header'),
           footerBuilder: (_) => const Text('footer'),
+          onLoading: () async {},
           itemsBuilder: (items) => ListView(
             controller: controller,
             reverse: true,

@@ -146,6 +146,8 @@ Controller 不保存数据。每个 Controller 同时只能绑定一个列表；
 
 Header/Footer 为必填 builder，尺寸来自实际输出，不提供默认尺寸、图标或文案。支持 ListView、GridView、CustomScrollView，支持横向、`reverse` 和 RTL。
 
+`onLoading` 为可选回调；为 `null` 时不调用 `footerBuilder`，任何加载状态下均不展示 Footer，也不占用其布局空间。
+
 业务状态与展示状态分离：
 
 - `canRefresh` / `canLoading` 只用于展示手势阈值，不进入业务快照。
